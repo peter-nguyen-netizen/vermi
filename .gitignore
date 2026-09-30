@@ -1,0 +1,38 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Packages/
+
+# Xcode
+build/
+DerivedData/
+xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+*.xccheckout
+*.moved-aside
+
+# Packaging output (scripts/build-dmg.sh)
+dist/
+*.dmg
+*.dSYM/
+*.dSYM.zip
+
+# Editors / tooling
+.vscode/
+.idea/
+*.swp
+*~
+
+# Local env / secrets
+.env
+.env.*
+
+# Knowledge graph output
+graphify-out/
