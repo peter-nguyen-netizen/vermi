@@ -1109,6 +1109,7 @@ struct TypedValueViewer: View {
     @State private var findTerm = ""
     @State private var currentMatch = 0
     @State private var structuredMode = true
+    @AppStorage("binaryViewMode") private var binaryMode: BinaryViewMode = .text
     @AppStorage("textScale") private var textScale = 1.0
 
     // Cached JSON — computed once off main thread, read many times.
@@ -1121,6 +1122,12 @@ struct TypedValueViewer: View {
 
     private var isStringKey: Bool {
         if case .string = typedValue { return true }
+        return false
+    }
+
+    /// Non-UTF-8 string value — read-only, rendered as Text/Hex/Base64.
+    private var isBinary: Bool {
+        if case .binary = typedValue { return true }
         return false
     }
 
@@ -1209,6 +1216,7 @@ struct TypedValueViewer: View {
         isFormattingJSON = true
         let value = typedValue
         let limit = prettyLimit
+        let binMode = binaryMode
         let result: String = await Task.detached(priority: .userInitiated) {
             switch value {
             case .none:
@@ -1216,6 +1224,8 @@ struct TypedValueViewer: View {
             case .string(let str):
                 if str.utf8.count > limit { return str }
                 return JSONFormatter.pretty(str) ?? str
+            case .binary(let data):
+                return BinaryFormatter.format(data, mode: binMode)
             case .list(let items):
                 return prettyPrintJSON(items)
             case .set(let members):
@@ -1321,6 +1331,14 @@ struct TypedValueViewer: View {
                         }
                         .buttonStyle(SecondaryButtonStyle())
                     }
+                    if isBinary {
+                        Picker("", selection: $binaryMode) {
+                            ForEach(BinaryViewMode.allCases) { Text($0.rawValue).tag($0) }
+                        }
+                        .pickerStyle(.segmented)
+                        .frame(width: 170)
+                        .help("Value is not valid UTF-8 — choose how to render the bytes (read-only)")
+                    }
                     if isStructured {
                         Picker("", selection: $structuredMode) {
                             Text("Edit").tag(true)
@@ -1410,7 +1428,7 @@ struct TypedValueViewer: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .onChange(of: viewModel.selectedKey) { _ in isEditing = false }
         // Async JSON formatting — runs once when value/mode changes, caches result.
-        .task(id: "\(viewModel.selectedKey ?? "")_\(structuredMode)_\(typedValue == .none ? "0" : "1")") {
+        .task(id: "\(viewModel.selectedKey ?? "")_\(structuredMode)_\(binaryMode.rawValue)_\(typedValue == .none ? "0" : "1")") {
             await formatCanonicalText()
         }
         // Debounced isJSON check during editing (500ms pause).

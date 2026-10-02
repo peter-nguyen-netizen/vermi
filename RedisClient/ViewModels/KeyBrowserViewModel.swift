@@ -16,6 +16,8 @@ struct ZSetMember: Identifiable, Sendable, Equatable {
 enum TypedKeyValue: Sendable, Equatable {
     case none
     case string(String)
+    /// String key whose bytes aren't valid UTF-8 (rendered via BinaryFormatter).
+    case binary(Data)
     case list([String])
     case hash([HashField])
     case set([String])
@@ -351,7 +353,7 @@ final class KeyBrowserViewModel: NSObject, ObservableObject {
             if let str = String(data: d, encoding: .utf8) {
                 typedValue = .string(str)
             } else {
-                typedValue = .string("[\(d.count) bytes of binary data]")
+                typedValue = .binary(d)
             }
         } else {
             typedValue = .string(value.stringValue ?? "(nil)")
