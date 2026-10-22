@@ -162,9 +162,9 @@ struct StructuredValueEditor: View {
             Text("Content")
                 .font(.system(size: 11, weight: .semibold, design: .rounded))
                 .foregroundColor(Theme.colors.textTertiary)
-            TextEditor(text: $editContent)
-                .font(.system(size: 13, design: .monospaced))
-                .scrollContentBackground(.hidden)
+            // NSTextView-backed so smart quotes/dashes stay off — SwiftUI's
+            // TextEditor turns `"` into `”` and corrupts JSON content.
+            HighlightingTextEditor(text: $editContent, fontSize: 13)
                 .padding(Theme.spacing.xs)
                 .background(Theme.colors.codeBackground)
                 .cornerRadius(Theme.sizes.smallCornerRadius)
