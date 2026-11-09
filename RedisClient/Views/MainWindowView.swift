@@ -106,6 +106,7 @@ struct TopBar: View {
     @Binding var appearance: AppearanceMode
     /// Tab currently being dragged in the tab strip (nil when idle).
     @State private var draggingTabId: UUID?
+    @Environment(\.colorScheme) private var colorScheme
 
     private var activeTab: AppState.ConnectionTab? {
         appState.openConnections.first(where: { $0.id == appState.activeTabId })
@@ -120,6 +121,9 @@ struct TopBar: View {
                     .padding(.leading, 10)
                     .padding(.trailing, 8)
 
+                // Own hosting view so dragging a chip reorders tabs instead of
+                // moving the window (see NonWindowDraggable).
+                NonWindowDraggable {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: Theme.spacing.sm) {
                         ForEach(appState.openConnections) { tab in
@@ -153,6 +157,8 @@ struct TopBar: View {
                             draggingTabId = nil
                         }
                     }
+                }
+                .environment(\.colorScheme, colorScheme)
                 }
 
                 Menu {
@@ -302,8 +308,6 @@ struct ConnectionTabChip: View {
         )
         .if(isActive) { $0.softShadowSmall() }
         .opacity(isDragging ? 0.45 : 1)
-        // Keep isMovableByWindowBackground from hijacking the drag-to-reorder.
-        .background(WindowDragBlocker())
         .contentShape(Rectangle())
         .onTapGesture { appState.setActiveTab(tab.id) }
         .onHover { isHovering = $0 }
