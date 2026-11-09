@@ -25,6 +25,9 @@ final class AppState: ObservableObject {
         var analysisViewModel: AnalysisViewModel?
         var monitoringViewModel: MonitoringViewModel?
         var sshTunnel: SSHTunnel?
+        /// Stable per-connection ordinal ("prod (2)") assigned at open, so
+        /// reordering tabs doesn't swap their disambiguation labels.
+        var instanceNumber: Int = 1
     }
 
     enum MainTab: String {
@@ -191,7 +194,8 @@ final class AppState: ObservableObject {
                 pubSubViewModel: pubSubVM,
                 analysisViewModel: analysisVM,
                 monitoringViewModel: monitoringVM,
-                sshTunnel: tunnel
+                sshTunnel: tunnel,
+                instanceNumber: nextInstanceNumber(for: connection.id)
             )
 
             openConnections.append(tab)
@@ -244,6 +248,40 @@ final class AppState: ObservableObject {
                 activeTabId = openConnections.last?.id
             }
         }
+    }
+
+    /// Smallest ordinal not used by an open tab of this connection.
+    func nextInstanceNumber(for connectionId: UUID) -> Int {
+        let used = Set(openConnections.filter { $0.connection.id == connectionId }.map(\.instanceNumber))
+        var n = 1
+        while used.contains(n) { n += 1 }
+        return n
+    }
+
+    /// Display name for a tab; adds "(N)" only when the connection is open in
+    /// more than one tab.
+    func displayName(for tab: ConnectionTab) -> String {
+        let count = openConnections.reduce(0) { $0 + ($1.connection.id == tab.connection.id ? 1 : 0) }
+        return count > 1 ? "\(tab.connection.name) (\(tab.instanceNumber))" : tab.connection.name
+    }
+
+    /// Move `tabId` into the slot currently held by `targetId` (Chrome-style:
+    /// dragging right lands after the target, dragging left lands before it).
+    func moveTab(_ tabId: UUID, to targetId: UUID) {
+        guard tabId != targetId,
+              let from = openConnections.firstIndex(where: { $0.id == tabId }),
+              let to = openConnections.firstIndex(where: { $0.id == targetId }) else { return }
+        let tab = openConnections.remove(at: from)
+        openConnections.insert(tab, at: to)
+    }
+
+    /// Shift a tab left (negative) or right (positive), clamped to bounds.
+    func moveTab(_ tabId: UUID, by offset: Int) {
+        guard let from = openConnections.firstIndex(where: { $0.id == tabId }) else { return }
+        let to = min(max(from + offset, 0), openConnections.count - 1)
+        guard to != from else { return }
+        let tab = openConnections.remove(at: from)
+        openConnections.insert(tab, at: to)
     }
 
     func setActiveTab(_ tabId: UUID) {

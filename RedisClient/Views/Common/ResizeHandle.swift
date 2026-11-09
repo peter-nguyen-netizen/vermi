@@ -2,7 +2,7 @@ import SwiftUI
 import AppKit
 
 /// Prevents `isMovableByWindowBackground` from capturing drags on this view.
-private struct WindowDragBlocker: NSViewRepresentable {
+struct WindowDragBlocker: NSViewRepresentable {
     func makeNSView(context: Context) -> NSView {
         let view = BlockerView()
         view.translatesAutoresizingMaskIntoConstraints = false

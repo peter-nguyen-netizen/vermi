@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct MainWindowView: View {
     @StateObject private var appState = AppState()
@@ -103,6 +104,8 @@ struct TopBar: View {
     @EnvironmentObject var appState: AppState
     @Binding var showConnectionSheet: Bool
     @Binding var appearance: AppearanceMode
+    /// Tab currently being dragged in the tab strip (nil when idle).
+    @State private var draggingTabId: UUID?
 
     private var activeTab: AppState.ConnectionTab? {
         appState.openConnections.first(where: { $0.id == appState.activeTabId })
@@ -120,8 +123,34 @@ struct TopBar: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: Theme.spacing.sm) {
                         ForEach(appState.openConnections) { tab in
-                            ConnectionTabChip(tab: tab, isActive: tab.id == appState.activeTabId)
-                                .environmentObject(appState)
+                            ConnectionTabChip(
+                                tab: tab,
+                                isActive: tab.id == appState.activeTabId,
+                                isDragging: tab.id == draggingTabId
+                            )
+                            .environmentObject(appState)
+                            .onDrag {
+                                draggingTabId = tab.id
+                                return NSItemProvider(object: tab.id.uuidString as NSString)
+                            }
+                            .onDrop(of: [.plainText], delegate: TabReorderDropDelegate(
+                                targetId: tab.id,
+                                appState: appState,
+                                draggingTabId: $draggingTabId
+                            ))
+                        }
+                    }
+                    // Drops on the gaps between chips still end the drag.
+                    .onDrop(of: [.plainText], delegate: TabReorderDropDelegate(
+                        targetId: nil,
+                        appState: appState,
+                        draggingTabId: $draggingTabId
+                    ))
+                    // A drag cancelled outside the window fires no drop callback;
+                    // clear the stale state on the next plain hover (no button held).
+                    .onContinuousHover { _ in
+                        if draggingTabId != nil, NSEvent.pressedMouseButtons == 0 {
+                            draggingTabId = nil
                         }
                     }
                 }
@@ -234,16 +263,12 @@ struct ConnectionTabChip: View {
     @EnvironmentObject var appState: AppState
     let tab: AppState.ConnectionTab
     let isActive: Bool
+    var isDragging: Bool = false
     @State private var isHovering = false
 
-    private var tabDisplayName: String {
-        let sameConnection = appState.openConnections.filter { $0.connection.id == tab.connection.id }
-        guard sameConnection.count > 1,
-              let idx = sameConnection.firstIndex(where: { $0.id == tab.id }) else {
-            return tab.connection.name
-        }
-        return "\(tab.connection.name) (\(idx + 1))"
-    }
+    private var tabDisplayName: String { appState.displayName(for: tab) }
+
+    private var tabIndex: Int? { appState.openConnections.firstIndex(where: { $0.id == tab.id }) }
 
     var body: some View {
         HStack(spacing: Theme.spacing.md) {
@@ -276,10 +301,54 @@ struct ConnectionTabChip: View {
                 .fill(isActive ? Theme.colors.surface : (isHovering ? Theme.colors.muted : Color.clear))
         )
         .if(isActive) { $0.softShadowSmall() }
+        .opacity(isDragging ? 0.45 : 1)
+        // Keep isMovableByWindowBackground from hijacking the drag-to-reorder.
+        .background(WindowDragBlocker())
         .contentShape(Rectangle())
         .onTapGesture { appState.setActiveTab(tab.id) }
         .onHover { isHovering = $0 }
         .handCursor()
+        .contextMenu {
+            Button("Move Tab Left") {
+                withAnimation(.easeInOut(duration: 0.18)) { appState.moveTab(tab.id, by: -1) }
+            }
+            .disabled(tabIndex == 0)
+            Button("Move Tab Right") {
+                withAnimation(.easeInOut(duration: 0.18)) { appState.moveTab(tab.id, by: 1) }
+            }
+            .disabled(tabIndex == appState.openConnections.count - 1)
+            Divider()
+            Button("Close Tab") {
+                Task { await appState.closeConnectionTab(tab.id) }
+            }
+        }
+    }
+}
+
+// MARK: - Tab drag-to-reorder
+
+/// Live, Chrome-style reordering: tabs shift as soon as the dragged chip
+/// enters another chip, not only on drop.
+struct TabReorderDropDelegate: DropDelegate {
+    /// Chip this delegate sits on; nil for the strip container.
+    let targetId: UUID?
+    let appState: AppState
+    @Binding var draggingTabId: UUID?
+
+    func validateDrop(info: DropInfo) -> Bool { draggingTabId != nil }
+
+    func dropEntered(info: DropInfo) {
+        guard let dragging = draggingTabId, let target = targetId, dragging != target else { return }
+        withAnimation(.easeInOut(duration: 0.18)) {
+            appState.moveTab(dragging, to: target)
+        }
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? { DropProposal(operation: .move) }
+
+    func performDrop(info: DropInfo) -> Bool {
+        draggingTabId = nil
+        return true
     }
 }
 
